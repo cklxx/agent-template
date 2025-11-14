@@ -1,0 +1,23 @@
+# Node / TypeScript artifacts
+node_modules/
+dist/
+
+# Env & secrets
+.env
+.env.local
+.env.*
+!.env.example
+
+# Logs & coverage
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage/
+
+# OS / editor files
+.DS_Store
+*.swp
+
+# Bun lockfile (generated locally, not needed for template)
+bun.lock
