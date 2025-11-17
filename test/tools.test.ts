@@ -1,7 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Response } from "undici";
-
 import { createWebFetchTool, createWebSearchTool } from "../src/tools";
 
 test("web_search parses DuckDuckGo-like HTML", async () => {
@@ -12,7 +10,7 @@ test("web_search parses DuckDuckGo-like HTML", async () => {
     <div class="result__snippet">Short snippet here.</div>
   </div>`;
 
-  globalThis.fetch = (async () => new Response(html, { status: 200 })) as typeof fetch;
+  globalThis.fetch = (async () => new Response(html, { status: 200 })) as typeof globalThis.fetch;
 
   try {
     const tool = createWebSearchTool();
@@ -31,7 +29,7 @@ test("web_fetch returns cleaned excerpt", async () => {
   const originalFetch = globalThis.fetch;
   const html = `<html><body><h1>Hello</h1><p>This is an article with detailed info.</p></body></html>`;
 
-  globalThis.fetch = (async () => new Response(html, { status: 200 })) as typeof fetch;
+  globalThis.fetch = (async () => new Response(html, { status: 200 })) as typeof globalThis.fetch;
 
   try {
     const tool = createWebFetchTool();

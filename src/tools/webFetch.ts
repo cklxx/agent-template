@@ -1,11 +1,18 @@
 import { load } from "cheerio";
-import { fetch } from "undici";
+import { fetch as undiciFetch } from "undici";
 
 import type { ToolDefinition } from "./types";
 
-interface WebFetchInput {
+interface WebFetchInput extends Record<string, unknown> {
   url: string;
   max_chars?: number;
+}
+
+function resolveFetch(): typeof globalThis.fetch {
+  if (typeof globalThis.fetch === "function") {
+    return globalThis.fetch.bind(globalThis) as unknown as typeof globalThis.fetch;
+  }
+  return undiciFetch as unknown as typeof globalThis.fetch;
 }
 
 export function createWebFetchTool(): ToolDefinition<WebFetchInput> {
@@ -36,7 +43,8 @@ export function createWebFetchTool(): ToolDefinition<WebFetchInput> {
       }
       const limit = Math.max(200, Math.min(max_chars ?? 2000, 8000));
       try {
-        const response = await fetch(url, { redirect: "follow" });
+        const fetchFn = resolveFetch();
+        const response = await fetchFn(url, { redirect: "follow" });
         if (!response.ok) {
           return JSON.stringify({
             error: `web_fetch failed with status ${response.status}`,
@@ -44,14 +52,18 @@ export function createWebFetchTool(): ToolDefinition<WebFetchInput> {
         }
         const html = await response.text();
         const $ = load(html);
-        const text = $("body")
+        const body = $("body").clone();
+        body.find("script, style, noscript").remove();
+        body.find("br").replaceWith("\n");
+        body.find("p, div, li, h1, h2, h3, h4, h5, h6").append("\n");
+        const text = body
           .text()
           .replace(/\s+/g, " ")
           .trim()
           .slice(0, limit);
         return JSON.stringify(
           {
-            url: response.url ?? url,
+            url: response.url || url,
             status: response.status,
             excerpt: text,
           },

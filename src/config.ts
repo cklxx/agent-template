@@ -5,8 +5,8 @@ loadEnv();
 
 const SettingsSchema = z.object({
   claudeApiKey: z.string().min(1, "CLAUDE_API_KEY is required"),
-  claudeModel: z.string().min(1).default("claude-3-5-sonnet-20240620"),
-  claudeBaseUrl: z.string().min(1).default("https://api.anthropic.com"),
+  claudeModel: z.string().min(1).default("gpt-4o-mini"),
+  claudeBaseUrl: z.string().min(1).default("https://api.openai.com/v1"),
   temperature: z.coerce.number().min(0).max(1).default(0.2),
   maxTokens: z.coerce.number().int().positive().default(1024),
   maxSteps: z.coerce.number().int().positive().max(10).default(5),
@@ -32,24 +32,24 @@ export function loadSettings(envPath?: string): Settings {
     loadEnv({ path: envPath, override: false });
   }
 
-  const apiKey = process.env.CLAUDE_API_KEY || process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY || process.env.CLAUDE_API_KEY;
   const model =
-    process.env.CLAUDE_MODEL ||
     process.env.MODEL_NAME ||
     process.env.OPENAI_MODEL ||
-    process.env.OPENAI_MODEL_NAME;
+    process.env.OPENAI_MODEL_NAME ||
+    process.env.CLAUDE_MODEL;
   const baseUrl =
-    process.env.CLAUDE_BASE_URL || process.env.OPENAI_BASE_URL || process.env.BASE_URL;
+    process.env.OPENAI_BASE_URL || process.env.BASE_URL || process.env.CLAUDE_BASE_URL;
 
   return SettingsSchema.parse({
     claudeApiKey: apiKey,
     claudeModel: model,
     claudeBaseUrl: baseUrl,
-    temperature: process.env.CLAUDE_TEMPERATURE ?? process.env.OPENAI_TEMPERATURE,
-    maxTokens: process.env.CLAUDE_MAX_TOKENS ?? process.env.OPENAI_MAX_TOKENS,
+    temperature: process.env.OPENAI_TEMPERATURE ?? process.env.CLAUDE_TEMPERATURE,
+    maxTokens: process.env.OPENAI_MAX_TOKENS ?? process.env.CLAUDE_MAX_TOKENS,
     maxSteps: process.env.AGENT_MAX_STEPS,
-    topP: process.env.CLAUDE_TOP_P ?? process.env.OPENAI_TOP_P,
-    topK: process.env.CLAUDE_TOP_K ?? process.env.OPENAI_TOP_K,
+    topP: process.env.OPENAI_TOP_P ?? process.env.CLAUDE_TOP_P,
+    topK: process.env.OPENAI_TOP_K ?? process.env.CLAUDE_TOP_K,
   });
 }
 

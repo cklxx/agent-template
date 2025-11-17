@@ -1,13 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import type {
-  ContentBlock,
-  MessageParam,
-  TextBlock,
-  TextBlockParam,
-  ToolResultBlockParam,
-  ToolUseBlock,
-  ToolUseBlockParam,
-} from "@anthropic-ai/sdk/resources/messages";
+  ChatCompletionContentPart,
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions";
 
 import type { AgentConfig } from "./config";
 import { BASE_SYSTEM_PROMPT, renderInitialUserPrompt } from "./prompts";
@@ -16,22 +12,34 @@ import type { ToolDefinition } from "./tools";
 interface ToolCall {
   id: string;
   name: string;
-  input: Record<string, unknown>;
+  arguments: Record<string, unknown>;
+}
+
+interface RunOptions {
+  debug?: boolean;
+}
+
+interface RunResult {
+  answer: string;
+  transcript?: string[];
 }
 
 class ToolRegistry {
-  private readonly tools: Record<string, ToolDefinition>;
-  readonly specs: Array<{ name: string; description: string; input_schema: unknown }>;
+  readonly specs: ChatCompletionTool[];
+  private readonly tools: Record<string, ToolDefinition<any>>;
 
-  constructor(toolDefinitions: ToolDefinition[]) {
+  constructor(toolDefinitions: ToolDefinition<any>[]) {
     if (!toolDefinitions.length) {
       throw new Error("At least one tool must be provided");
     }
     this.tools = Object.fromEntries(toolDefinitions.map((tool) => [tool.name, tool]));
     this.specs = toolDefinitions.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: tool.inputSchema,
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema,
+      },
     }));
   }
 
@@ -45,124 +53,148 @@ class ToolRegistry {
 }
 
 export class ReActAgent {
-  private readonly client: Anthropic;
+  private readonly client: OpenAI;
   private readonly registry: ToolRegistry;
 
-  constructor(private readonly config: AgentConfig, tools: ToolDefinition[]) {
-    this.client = new Anthropic({
+  constructor(private readonly config: AgentConfig, tools: ToolDefinition<any>[]) {
+    this.client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseUrl,
     });
     this.registry = new ToolRegistry(tools);
   }
 
-  async run(query: string, options: { debug?: boolean } = {}): Promise<string> {
-    const messages: MessageParam[] = [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: renderInitialUserPrompt(query),
-          },
-        ],
-      },
+  async run(query: string, options: RunOptions = {}): Promise<RunResult> {
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "system", content: BASE_SYSTEM_PROMPT },
+      { role: "user", content: renderInitialUserPrompt(query) },
     ];
-
     const transcript: string[] = [];
+    const captureDebug = Boolean(options.debug);
 
     for (let step = 1; step <= this.config.maxSteps; step += 1) {
-      const response = await this.client.messages.create({
+      const completion = await this.client.chat.completions.create({
         model: this.config.model,
-        system: BASE_SYSTEM_PROMPT,
         messages,
-        max_tokens: this.config.maxTokens,
         temperature: this.config.temperature,
         top_p: this.config.topP,
-        top_k: this.config.topK,
+        max_tokens: this.config.maxTokens,
         tools: this.registry.specs,
       });
 
-      const textBlocks = extractText(response.content);
-      const toolCalls = extractToolCalls(response.content);
-
-      if (options.debug && textBlocks.length) {
-        transcript.push(`Step ${step} thought:\n${textBlocks.join("\n")}`);
+      const message = completion.choices[0]?.message;
+      if (!message) {
+        throw new Error("OpenAI response missing message");
       }
 
-      messages.push({
+      const text = renderMessageContent(message.content);
+      const trimmedThought = text.trim();
+      if (captureDebug && trimmedThought) {
+        transcript.push(`Step ${step} thought:\n${trimmedThought}`);
+      }
+
+      const assistantMessage: ChatCompletionMessageParam = {
         role: "assistant",
-        content: response.content.map(toContentParam),
-      });
+        content: message.content ?? "",
+      };
+      if (message.tool_calls?.length) {
+        (assistantMessage as OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam).tool_calls =
+          message.tool_calls;
+      }
+      messages.push(assistantMessage);
 
+      const toolCalls = extractToolCalls(message);
       if (!toolCalls.length) {
-        const finalText = textBlocks.join("\n").trim();
-        if (options.debug) {
+        const finalText = trimmedThought;
+        if (captureDebug) {
           transcript.push(`Final answer:\n${finalText}`);
-          return transcript.join("\n\n");
+          return { answer: finalText, transcript };
         }
-        return finalText;
+        return { answer: finalText };
       }
 
-      const toolResults: ToolResultBlockParam[] = [];
       for (const call of toolCalls) {
         try {
-          const result = await this.registry.execute(call.name, call.input);
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: call.id,
+          if (captureDebug) {
+            transcript.push(
+              `Step ${step} tool ${call.name} input:\n${formatToolArguments(call.arguments)}`,
+            );
+          }
+          const result = await this.registry.execute(call.name, call.arguments);
+          messages.push({
+            role: "tool",
+            tool_call_id: call.id,
             content: result,
           });
+          if (captureDebug) {
+            transcript.push(`Step ${step} tool ${call.name} result:\n${summarizeToolResult(result)}`);
+          }
         } catch (error) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: call.id,
-            content: JSON.stringify({
-              error: `${call.name} failed: ${String(error)}`,
-            }),
+          messages.push({
+            role: "tool",
+            tool_call_id: call.id,
+            content: JSON.stringify({ error: `${call.name} failed: ${String(error)}` }),
           });
+          if (captureDebug) {
+            transcript.push(`Step ${step} tool ${call.name} error:\n${String(error)}`);
+          }
         }
       }
-
-      messages.push({
-        role: "user",
-        content: toolResults,
-      });
     }
 
     throw new Error("Reached the maximum number of steps without a final answer. Increase AGENT_MAX_STEPS if needed.");
   }
 }
 
-function extractText(blocks: ContentBlock[]): string[] {
-  return blocks
-    .filter((block): block is TextBlock => block.type === "text")
-    .map((block) => block.text);
+function extractToolCalls(message: OpenAI.Chat.Completions.ChatCompletionMessage): ToolCall[] {
+  const calls = message.tool_calls;
+  if (!calls?.length) {
+    return [];
+  }
+  return calls.map((call) => ({
+    id: call.id,
+    name: call.function.name,
+    arguments: JSON.parse(call.function.arguments || "{}"),
+  }));
 }
 
-function extractToolCalls(blocks: ContentBlock[]): ToolCall[] {
-  return blocks
-    .filter((block): block is ToolUseBlock => block.type === "tool_use")
-    .map((block) => ({
-      id: block.id,
-      name: block.name,
-      input: block.input as Record<string, unknown>,
-    }));
+type MessageContent = OpenAI.Chat.Completions.ChatCompletionMessage["content"];
+type MessageContentPart = string | ChatCompletionContentPart;
+
+function renderMessageContent(content: MessageContent): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    const parts = content as MessageContentPart[];
+    return parts
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+        if ("text" in part && typeof part.text === "string") {
+          return part.text;
+        }
+        return "";
+      })
+      .join("")
+      .trim();
+  }
+  return "";
 }
 
-function toContentParam(block: ContentBlock): TextBlockParam | ToolUseBlockParam {
-  if (block.type === "text") {
-    const textBlock: TextBlockParam = { type: "text", text: block.text };
-    return textBlock;
+function formatToolArguments(args: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(args, null, 2);
+  } catch {
+    return String(args);
   }
-  if (block.type === "tool_use") {
-    const toolBlock: ToolUseBlockParam = {
-      type: "tool_use",
-      id: block.id,
-      name: block.name,
-      input: block.input,
-    };
-    return toolBlock;
+}
+
+function summarizeToolResult(content: string): string {
+  const limit = 1200;
+  if (content.length <= limit) {
+    return content;
   }
-  throw new Error(`Unsupported content block: ${JSON.stringify(block)}`);
+  return `${content.slice(0, limit)}\n... (truncated)`;
 }

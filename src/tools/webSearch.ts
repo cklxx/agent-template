@@ -1,11 +1,18 @@
 import { load } from "cheerio";
-import { fetch } from "undici";
+import { fetch as undiciFetch } from "undici";
 
 import type { ToolDefinition } from "./types";
 
-interface WebSearchInput {
+interface WebSearchInput extends Record<string, unknown> {
   query: string;
   max_results?: number;
+}
+
+function resolveFetch(): typeof globalThis.fetch {
+  if (typeof globalThis.fetch === "function") {
+    return globalThis.fetch.bind(globalThis) as unknown as typeof globalThis.fetch;
+  }
+  return undiciFetch as unknown as typeof globalThis.fetch;
 }
 
 function parseResults(html: string, limit: number) {
@@ -57,7 +64,8 @@ export function createWebSearchTool(): ToolDefinition<WebSearchInput> {
       endpoint.searchParams.set("q", query);
       endpoint.searchParams.set("kl", "wt-wt");
       try {
-        const response = await fetch(endpoint, {
+        const fetchFn = resolveFetch();
+        const response = await fetchFn(endpoint, {
           headers: {
             "User-Agent": "claude-react-agent-template/0.1",
           },

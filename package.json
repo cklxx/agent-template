@@ -1,17 +1,18 @@
 {
   "name": "claude-react-agent-template",
   "version": "0.1.0",
-  "description": "ReAct-style Claude agent template using the TypeScript SDK with web search & fetch tools",
+  "description": "ReAct-style OpenAI agent template using the TypeScript SDK with web search & fetch tools",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "tsx src/cli.ts",
     "dev": "tsx watch src/cli.ts",
     "check": "tsc --noEmit",
-    "test": "tsx --test \"test/**/*.test.ts\""
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "cases": "tsx scripts/runDefaultCases.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.27.1",
+    "openai": "^4.78.1",
     "cheerio": "^1.0.0-rc.12",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",

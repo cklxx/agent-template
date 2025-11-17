@@ -20,7 +20,7 @@ async function main() {
   const program = new Command();
   program
     .name("react-agent")
-    .description("Run the Claude ReAct agent template over a query.")
+    .description("Run the OpenAI ReAct agent template over a query.")
     .argument("[query]", "User question or task for the agent")
     .option("--debug", "Return intermediate thoughts for inspection", false)
     .action(async (queryArg: string | undefined, options: { debug?: boolean }) => {
@@ -36,8 +36,13 @@ async function main() {
       ]);
 
       try {
-        const result = await agent.run(query, { debug: options.debug });
-        console.log("\n" + result.trim());
+        const { answer, transcript } = await agent.run(query, { debug: options.debug });
+        if (options.debug && transcript?.length) {
+          console.log("\n" + transcript.join("\n\n"));
+          console.log("\nAnswer:\n" + answer.trim());
+        } else {
+          console.log("\n" + answer.trim());
+        }
       } catch (error) {
         console.error(`Agent run failed: ${String(error)}`);
         process.exitCode = 1;
