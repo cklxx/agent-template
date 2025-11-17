@@ -1,12 +1,12 @@
-# OpenAI ReAct Agent Template (TypeScript)
+# ReAct Agent Template (TypeScript)
 
 This template shows how to wire up a lightweight ReAct-style workflow on top of
-the OpenAI Chat Completions API (via the official SDK). It bundles:
+the Chat Completions API (via the official SDK). It bundles:
 
 - A reusable system prompt tuned for tool-first reasoning.
 - Two common tools (`web_search` + `web_fetch`) implemented with DuckDuckGo HTML
   results plus HTTP fetch/cheerio parsing.
-- Environment-based configuration so you only need to set your OpenAI-compatible
+- Environment-based configuration so you only need to set your API-compatible
   key, base URL, and model.
 - A minimal CLI (`pnpm start` or `npm run start`) that runs the loop end-to-end
   with optional `--debug` traces.
@@ -28,8 +28,8 @@ the OpenAI Chat Completions API (via the official SDK). It bundles:
 
    Fill in (the template prefers `OPENAI_*` / `MODEL_NAME`; `CLAUDE_*` works as fallback):
 
-   - `OPENAI_API_KEY` (or `CLAUDE_API_KEY`) – API key from your OpenAI-compatible
-     service (Anthropic-compatible gateways can still be used via fallback)
+   - `OPENAI_API_KEY` (or `CLAUDE_API_KEY`) – API key from your provider
+     (Anthropic-compatible gateways can still be used via fallback)
    - `OPENAI_BASE_URL` (or `CLAUDE_BASE_URL`) – e.g. `https://api.openai.com/v1`
      or your proxy (`https://ark-cn-beijing.bytedance.net/api/v3` works)
    - `MODEL_NAME` (or `CLAUDE_MODEL`) – e.g. `gpt-4o-mini`, `kimi-k2-0905`, etc.
@@ -74,7 +74,7 @@ Bun works out of the box if you prefer its package manager/runtime:
 
 ```
 src/
-├── agent.ts        # ReAct loop wired to the OpenAI SDK and tool registry
+├── agent.ts        # ReAct loop wired to the chat SDK and tool registry
 ├── cli.ts          # Command-line entry point
 ├── config.ts       # Env-backed settings + helper to build AgentConfig
 ├── prompts.ts      # System + user prompt templates
@@ -109,6 +109,6 @@ src/
 - The `web_search` tool scrapes DuckDuckGo's lightweight HTML endpoint. Swap it
   out for your preferred provider (Tavily, Serper, custom service, etc.) if you
   need higher reliability.
-- The OpenAI SDK calls respect a custom `OPENAI_BASE_URL`, so you can point the
+- The SDK calls respect a custom `OPENAI_BASE_URL`, so you can point the
   agent at api.openai.com, Ark, or any gateway that implements the Chat
   Completions interface with tool calling enabled.
